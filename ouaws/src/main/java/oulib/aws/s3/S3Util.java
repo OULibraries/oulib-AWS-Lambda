@@ -60,6 +60,14 @@ import oulib.aws.exceptions.NoMatchingTagInfoException;
  * @author Tao Zhao
  */
 public class S3Util {
+    
+    /**
+     * Check if an Amazon S3 folder exists
+     * 
+     * @param folderName : folder name to find
+     * @param keyMap : the collection of path to check
+     * @return : boolean
+     */
     public static boolean folderExitsts(String folderName, Map<String, String> keyMap){
         for (String key : keyMap.keySet()) {
             if(null != key && key.contains("/"+folderName+"/")){
@@ -69,6 +77,13 @@ public class S3Util {
         return false;
     }
     
+    /**
+     * 
+     * @param bucketName
+     * @param folderName
+     * @param client
+     * @return : a map of keys with keyset of object keys
+     */
     public static Map<String, String> getBucketObjectKeyMap(String bucketName, String folderName, AmazonS3 client){
         final ListObjectsV2Request req = new ListObjectsV2Request().withBucketName(bucketName);
         ListObjectsV2Result result;
@@ -87,6 +102,13 @@ public class S3Util {
         return keyMap;
     }
     
+    /**
+     * Creates an AWS S3 folder
+     * 
+     * @param bucketName
+     * @param folderName
+     * @param client 
+     */
     public static void createFolder(String bucketName, String folderName, AmazonS3 client){
     	
     	try{
@@ -109,6 +131,12 @@ public class S3Util {
     	
     }
     
+    /**
+     * 
+     * @param s3client : S3 cient
+     * @param name : bucke name
+     * @return : S3 bucket
+     */
     public static Bucket getS3BucketByName(AmazonS3 s3client, String name){
         Bucket bucket = null;
         for (Iterator<Bucket> it = s3client.listBuckets().iterator(); it.hasNext();) {
@@ -120,6 +148,15 @@ public class S3Util {
         return bucket;
     }
     
+    /**
+     * Generate a small tiff file from large Tiff S3 bucket object <br>
+     * Note: the small tiff file will have the same key path as the original one
+     * 
+     * @param s3client : S3 client
+     * @param s3 : S3 object that con
+     * @param targetBucketName : the bucket that stores the small tiff file
+     * @return : PutObjectResult
+     */
     public static PutObjectResult generateSmallTiff(AmazonS3 s3client, S3Object s3, String targetBucketName){
         
         PutObjectResult result = null;
@@ -288,6 +325,13 @@ public class S3Util {
             return result;
     }
     
+    /**
+     *  Get exif technical metadata from S3 object
+     * 
+     * @param s3client
+     * @param s3
+     * @return : TiffImageMetadata
+     */
     public static TiffImageMetadata retrieveExifMetadata(AmazonS3 s3client, S3Object s3){
         TiffImageMetadata tiffMetadata = null;
         try {
@@ -300,6 +344,12 @@ public class S3Util {
         return tiffMetadata;
     }
     
+    /**
+     * Add data into tiff exif metadata
+     * 
+     * @param tiffMetadata : TiffImageMetadata
+     * @param data : map of data
+     */
     public static void addTiffOutputFieldIntoTiffMetadata(TiffImageMetadata tiffMetadata, Map<TagInfo, Object> data){
         try {
             TiffOutputSet output = tiffMetadata.getOutputSet();
@@ -313,6 +363,14 @@ public class S3Util {
         
     }
     
+    /**
+     * 
+     * @param exifDirectory : TiffOutputDirectory
+     * @param tagInfo : TagInfo defined the field type
+     * @param value : value of the new field
+     * @throws ImageWriteException
+     * @throws NoMatchingTagInfoException 
+     */
     public static void addTiffOutputFieldIntoTiffOutputDirectory(TiffOutputDirectory exifDirectory, TagInfo tagInfo, Object value) 
             throws ImageWriteException, NoMatchingTagInfoException{
         
