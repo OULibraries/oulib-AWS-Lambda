@@ -8,3 +8,5 @@ Java8, Maven 3
 AWS Java SDK, Lambda Java Core;
 
 Apache Imaging Project, Java Advanced Imaging.
+
+I used the Eclipse plugin: AWS toolkit to create and edit my lambda function code.
