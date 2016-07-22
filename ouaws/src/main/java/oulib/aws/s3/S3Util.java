@@ -157,7 +157,7 @@ public class S3Util {
      * @param targetBucketName : the bucket that stores the small tiff file
      * @return : PutObjectResult
      */
-    public static PutObjectResult generateSmallTiff(AmazonS3 s3client, S3Object s3, String targetBucketName){
+    public static PutObjectResult generateSmallTiff(AmazonS3 s3client, S3Object s3, String targetBucketName, double compressionRate){
         
         PutObjectResult result = null;
         ByteArrayOutputStream bos = null;
@@ -176,7 +176,7 @@ public class S3Util {
 
             RenderingHints qualityHints = new RenderingHints(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
 
-            RenderedOp resizedImage = JAI.create("SubsampleAverage", image, 0.5, 0.5, qualityHints);
+            RenderedOp resizedImage = JAI.create("SubsampleAverage", image, compressionRate, compressionRate, qualityHints);
             
             TIFFEncodeParam params = new com.sun.media.jai.codec.TIFFEncodeParam();
 
@@ -263,24 +263,30 @@ public class S3Util {
                 TiffOutputDirectory rootDir = output2.getOrCreateRootDirectory();
                 TiffOutputDirectory exifDir = output2.getOrCreateExifDirectory();
                 TiffOutputDirectory gpsDir = output2.getOrCreateGPSDirectory();
-
-                List<TiffOutputField> fs = output1.getRootDirectory().getFields();
-                for(TiffOutputField f1 : fs){
-                    if(null == rootDir.findField(f1.tag)
-                            // CANNOT create the output image with this tag included!
-                            && !"PlanarConfiguration".equals(f1.tagInfo.name)){
-                        rootDir.add(f1);
+                
+                if(null != output1.getRootDirectory()){
+                    List<TiffOutputField> fs = output1.getRootDirectory().getFields();
+                    for(TiffOutputField f1 : fs){
+                        if(null == rootDir.findField(f1.tag)
+                                // CANNOT create the output image with this tag included!
+                                && !"PlanarConfiguration".equals(f1.tagInfo.name)){
+                            rootDir.add(f1);
+                        }
                     }
                 }
 
-                for(TiffOutputField f2 : output1.getExifDirectory().getFields()){
-                    exifDir.removeField(f2.tagInfo);
-                    exifDir.add(f2);
+                if(null != output1.getExifDirectory()){
+                    for(TiffOutputField f2 : output1.getExifDirectory().getFields()){
+                        exifDir.removeField(f2.tagInfo);
+                        exifDir.add(f2);
+                    }
                 }
 
-                for(TiffOutputField f3 : output1.getGPSDirectory().getFields()){
-                    gpsDir.removeField(f3.tagInfo);
-                    gpsDir.add(f3);
+                if(null != output1.getGPSDirectory()){
+                    for(TiffOutputField f3 : output1.getGPSDirectory().getFields()){
+                        gpsDir.removeField(f3.tagInfo);
+                        gpsDir.add(f3);
+                    }
                 }
                 
                 byteArrayOutputStream = new ByteArrayOutputStream();
