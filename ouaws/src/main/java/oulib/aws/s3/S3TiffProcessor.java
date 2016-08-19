@@ -58,13 +58,13 @@ public class S3TiffProcessor implements RequestHandler<S3BookInfo, String> {
                
                for (S3ObjectSummary objectSummary : result.getObjectSummaries()) {
                    String key = objectSummary.getKey();
-                   if(key.endsWith("067.tif") && !targetBucketKeyMap.containsKey(key+".tif")){
+                   if(key.endsWith(".tif") && !targetBucketKeyMap.containsKey(key+".tif")){
                        S3Object object = s3client.getObject(new GetObjectRequest(sourceBucketName, key));
                        System.out.println("Start to generate smaller tif image for the object "+key);
-//                       S3Util.generateSmallTiff(s3client, object, targetBucketName, bookInfo.getCompressionRate());
-                       S3Util.copyS3ObjectTiffMetadata(s3client, object, s3client.getObject(new GetObjectRequest(targetBucketName, key)), targetBucketName, key+".tif");
+                       S3Util.generateSmallTiffWithTargetSize(s3client, object, targetBucketName, bookInfo.getCompressionSize());
+//                       S3Util.copyS3ObjectTiffMetadata(s3client, object, s3client.getObject(new GetObjectRequest(targetBucketName, key)), targetBucketName, key+".tif");
                        System.out.println("Finished to generate smaller tif image for the object "+key+".tif");
-                       break;
+//                       break;
                    }
                }
                System.out.println("Next Continuation Token : " + result.getNextContinuationToken());

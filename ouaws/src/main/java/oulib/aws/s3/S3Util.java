@@ -6,8 +6,10 @@
 package oulib.aws.s3;
 
 import com.amazonaws.AmazonClientException;
+import com.amazonaws.AmazonServiceException;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.model.Bucket;
+import com.amazonaws.services.s3.model.GetObjectRequest;
 import com.amazonaws.services.s3.model.ListObjectsV2Request;
 import com.amazonaws.services.s3.model.ListObjectsV2Result;
 import com.amazonaws.services.s3.model.ObjectMetadata;
@@ -29,6 +31,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -53,6 +56,7 @@ import org.apache.commons.imaging.formats.tiff.write.TiffImageWriterLossy;
 import org.apache.commons.imaging.formats.tiff.write.TiffOutputDirectory;
 import org.apache.commons.imaging.formats.tiff.write.TiffOutputField;
 import org.apache.commons.imaging.formats.tiff.write.TiffOutputSet;
+
 import oulib.aws.exceptions.NoMatchingTagInfoException;
 
 /**
@@ -60,6 +64,13 @@ import oulib.aws.exceptions.NoMatchingTagInfoException;
  * @author Tao Zhao
  */
 public class S3Util {
+    
+    public static final double COMPRESSION_RATE_75_PERCENT_OF_ORIGINAL = 0.87;
+    public static final double COMPRESSION_RATE_50_PERCENT_OF_ORIGINAL = 0.71;
+    public static final double COMPRESSION_RATE_25_PERCENT_OF_ORIGINAL = 0.50;
+    public static final long COMPRESSOIN_TARGET_SIZE_EXTRA_SMALL = 5000000;
+    public static final long COMPRESSOIN_TARGET_SIZE__SMALL = 20000000;
+    public static final long COMPRESSOIN_TARGET_SIZE_MEDIUM = 60000000;
     
     /**
      * Check if an Amazon S3 folder exists
@@ -79,9 +90,9 @@ public class S3Util {
     
     /**
      * 
-     * @param bucketName
-     * @param folderName
-     * @param client
+     * @param bucketName : bucket name
+     * @param folderName : a unique folder name or partial path in the bucket
+     * @param client : s3 client
      * @return : a map of keys with keyset of object keys
      */
     public static Map<String, String> getBucketObjectKeyMap(String bucketName, String folderName, AmazonS3 client){
@@ -94,7 +105,9 @@ public class S3Util {
 
             for (S3ObjectSummary objectSummary : result.getObjectSummaries()) {                
                 String key = objectSummary.getKey();
-                keyMap.put(key, key);
+                if(key.contains(folderName)){
+                    keyMap.put(key, key);
+                }
             }            
             req.setContinuationToken(result.getNextContinuationToken());
         } while(result.isTruncated() == true ); 
@@ -155,6 +168,7 @@ public class S3Util {
      * @param s3client : S3 client
      * @param s3 : S3 object that con
      * @param targetBucketName : the bucket that stores the small tiff file
+     * @param compressionRate : compression rate
      * @return : PutObjectResult
      */
     public static PutObjectResult generateSmallTiff(AmazonS3 s3client, S3Object s3, String targetBucketName, double compressionRate){
@@ -172,6 +186,7 @@ public class S3Util {
             s = s3.getObjectContent();
             TIFFDecodeParam param = new TIFFDecodeParam();
             ImageDecoder dec = ImageCodec.createImageDecoder("TIFF", s, param);
+            
             RenderedImage image = dec.decodeAsRenderedImage();
 
             RenderingHints qualityHints = new RenderingHints(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
@@ -192,6 +207,10 @@ public class S3Util {
             metadata.setContentLength(os.toByteArray().length);
             metadata.setContentType("image/tiff");
             metadata.setLastModified(new Date());
+            
+            os.close();
+            
+            imagenew.flush();
             
             result = s3client.putObject(new PutObjectRequest(targetBucketName, s3.getKey(), is, metadata));
         } catch (IOException | AmazonClientException ex) {
@@ -217,6 +236,28 @@ public class S3Util {
         }
         
         return result;
+    }
+    
+    /**
+     * Generate a small tiff file with defined size from large Tiff S3 bucket object <br>
+     * Note: the small tiff file will have the same key path as the original one
+     * 
+     * @param s3client : S3 client
+     * @param s3 : S3 object that con
+     * @param targetBucketName : the bucket that stores the small tiff file
+     * @return : PutObjectResult
+     */
+    public static PutObjectResult generateSmallTiffWithTargetSize(AmazonS3 s3client, S3Object s3, String targetBucketName, long compressionSize){
+    	try{
+	    	long objSize = s3.getObjectMetadata().getContentLength();
+	    	double compressionRate = Math.sqrt(Double.valueOf(compressionSize)/Double.valueOf(objSize));
+//	    	System.out.println("The compressoin rate is "+String.valueOf(compressionRate)+" with original size = "+String.valueOf(objSize)+" and target size = "+String.valueOf(compressionSize));
+	    	return generateSmallTiff(s3client, s3, targetBucketName, compressionRate);
+    	}
+    	catch(Exception ex){
+    		ex.printStackTrace();
+    	}
+    	return null;
     }
     
     /**
@@ -394,5 +435,79 @@ public class S3Util {
         else{
             throw new NoMatchingTagInfoException("Cannot find the matching Exif Tag type information!");
         }
+    }
+    
+    public static void generateTifDerivativesByS3Bucket(AmazonS3 s3client, S3BookInfo bookInfo){
+    	
+    	String sourceBucketName = bookInfo.getBucketSourceName();
+        String targetBucketName = bookInfo.getBucketTargetName();
+        String bookName = bookInfo.getBookName();
+        
+        try{
+        
+            // Every book has a folder in the target bucket:
+            Map targetBucketKeyMap = S3Util.getBucketObjectKeyMap(targetBucketName, bookName, s3client);
+            if(!S3Util.folderExitsts(bookName, targetBucketKeyMap)){
+                S3Util.createFolder(targetBucketName, bookName, s3client);
+            }
+
+            final ListObjectsV2Request req = new ListObjectsV2Request().withBucketName(sourceBucketName).withPrefix(bookName + "/data/");
+            ListObjectsV2Result result;
+
+            do {               
+                result = s3client.listObjectsV2(req);
+
+                for (S3ObjectSummary objectSummary : result.getObjectSummaries()) {
+                    String key = objectSummary.getKey();
+                    if(key.contains(".tif") && (key.contains("047") || key.contains("049") || key.contains("054")) && !targetBucketKeyMap.containsKey(key+".tif")){
+                        S3Object object = s3client.getObject(new GetObjectRequest(sourceBucketName, key));
+                        System.out.println("Start to generate smaller tif image for the object "+key+"\n");
+                        S3Util.generateSmallTiffWithTargetSize(s3client, object, targetBucketName, bookInfo.getCompressionSize());
+     //                   S3Util.copyS3ObjectTiffMetadata(s3client, object, s3client.getObject(new GetObjectRequest(targetBucketName, key)), targetBucketName, key+".tif");
+                        System.out.println("Finished to generate smaller tif image for the object "+key+"\n");
+     //                   break;
+                    }
+                }
+                System.out.println("Next Continuation Token : " + result.getNextContinuationToken()+"\n");
+                req.setContinuationToken(result.getNextContinuationToken());
+            } while(result.isTruncated() == true ); 
+	        
+        } catch (AmazonServiceException ase) {
+           System.out.println("Caught an AmazonServiceException, which means your request made it to Amazon S3, but was rejected with an error response for some reason.\n");
+           System.out.println("Error Message:    " + ase.getMessage()+"\n");
+           System.out.println("HTTP Status Code: " + ase.getStatusCode()+"\n");
+           System.out.println("AWS Error Code:   " + ase.getErrorCode()+"\n");
+           System.out.println("Error Type:       " + ase.getErrorType()+"\n");
+           System.out.println("Request ID:       " + ase.getRequestId()+"\n");
+       } catch (AmazonClientException ace) {
+           System.out.println("Caught an AmazonClientException, which means the client encountered an internal error while trying to communicate with S3, \nsuch as not being able to access the network.\n");
+           System.out.println("Error Message: " + ace.getMessage()+"\n");
+       }
+    }
+    
+    /**
+     * 
+     * @param s3client : s3 client
+     * @param sourceBucket : the bucket as the base to be compared
+     * @param srcBucketFolder : a unique folder name or a unique partial path in the bucket
+     * @param targetBucket : the bucket to be checked if containing objects in the source bucket
+     * @param tgtBucketFolder : a unique folder name or a unique partial path in the bucket
+     * @return : list of the objects that are in the source bucket but not the target bucket
+     */
+    public static List<String> getS3BucketFolderObjDiff(AmazonS3 s3client, String sourceBucket, String srcBucketFolder, String targetBucket, String tgtBucketFolder){
+        List<String> diffObjList = new ArrayList<>();
+        try{
+            Map<String, String> srcMap = getBucketObjectKeyMap(sourceBucket, srcBucketFolder, s3client);
+            Map<String, String> tgtMap = getBucketObjectKeyMap(targetBucket, tgtBucketFolder, s3client);
+            for(String srcKey : srcMap.keySet()){
+                if(srcKey.endsWith(".tif") && null == tgtMap.get(srcKey)){
+                    diffObjList.add(srcKey);
+                }
+            }
+        }
+        catch(Exception ex){
+            ex.printStackTrace();
+        }
+        return diffObjList;
     }
 }

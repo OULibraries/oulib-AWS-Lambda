@@ -13,7 +13,7 @@ public class S3BookInfo {
     private String bookName;
     private String bucketSourceName;
     private String bucketTargetName;
-    private double compressionRate;
+    private long compressionSize;
 
     public String getBookName() {
             return bookName;
@@ -34,11 +34,11 @@ public class S3BookInfo {
             this.bucketTargetName = bucketTargetName;
     }
 
-    public double getCompressionRate() {
-        return compressionRate;
+    public long getCompressionSize() {
+        return compressionSize;
     }
 
-    public void setCompressionRate(double compressionRate) {
-        this.compressionRate = compressionRate;
+    public void setCompressionSize(long compressionSize) {
+        this.compressionSize = compressionSize;
     }
 }

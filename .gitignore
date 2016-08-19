@@ -6,3 +6,5 @@ commons-imaging/
 ouaws/.classpath
 ouaws/.project
 ouaws/.settings/
+ouaws/nbactions.xml
+ouaws/output/
